@@ -16,6 +16,6 @@ export interface Task {
 export interface Profile {
   id: string
   full_name: string | null
-  whatsapp_number: string | null
+  email: string | null
   updated_at: string | null
 }

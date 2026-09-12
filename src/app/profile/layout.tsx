@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import AppNavbar from '@/components/AppNavbar'
 
 export const metadata: Metadata = {
-  title: 'Profile & WhatsApp',
+  title: 'Profile & Email',
 }
 
 export default function ProfileLayout({ children }: { children: React.ReactNode }) {

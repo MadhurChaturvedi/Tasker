@@ -16,10 +16,15 @@ const PRIORITY_OPTIONS: { value: Priority; label: string; emoji: string }[] = [
 ]
 
 const REMINDER_OPTIONS = [
+  { value: 5, label: '5 minutes before' },
+  { value: 10, label: '10 minutes before' },
+  { value: 15, label: '15 minutes before' },
   { value: 30, label: '30 minutes before' },
+  { value: 45, label: '45 minutes before' },
   { value: 60, label: '1 hour before' },
   { value: 120, label: '2 hours before' },
   { value: 360, label: '6 hours before' },
+  { value: 720, label: '12 hours before' },
   { value: 1440, label: '1 day before' },
 ]
 
@@ -175,7 +180,7 @@ export default function AddTaskModal({ onClose, onSave, editTask }: AddTaskModal
           </div>
 
           <div className="form-group">
-            <label htmlFor="task-reminder" className="form-label">💬 WhatsApp Reminder</label>
+            <label htmlFor="task-reminder" className="form-label">� Email Reminder</label>
             <select
               id="task-reminder"
               className="form-select"
@@ -187,7 +192,7 @@ export default function AddTaskModal({ onClose, onSave, editTask }: AddTaskModal
               ))}
             </select>
             <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-              You&apos;ll receive a WhatsApp message at this time before the deadline.
+              You&apos;ll receive an email reminder before the deadline.
             </p>
           </div>
 

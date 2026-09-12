@@ -3,10 +3,11 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import ThemeToggle from '@/components/ThemeToggle'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-  { href: '/profile', label: 'Profile & WhatsApp', icon: '👤' },
+  { href: '/profile', label: 'Profile & Email', icon: '👤' },
 ]
 
 export default function AppNavbar() {
@@ -38,6 +39,7 @@ export default function AppNavbar() {
               <span style={{ display: 'none' }}>{item.label}</span>
             </Link>
           ))}
+          <ThemeToggle />
           <button
             onClick={handleSignOut}
             className="btn btn-secondary btn-sm"

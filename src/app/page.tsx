@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Tasker — Smart Task Management with WhatsApp Reminders',
-  description: 'Manage your tasks, set deadlines, and receive automatic WhatsApp reminders before they are due.',
+  title: 'Tasker — Smart Task Management with Email Reminders',
+  description: 'Manage your tasks, set deadlines, and receive automatic email reminders before they are due.',
 }
 
 const features = [
@@ -13,9 +13,9 @@ const features = [
     desc: 'Create, organize, and track tasks with priorities and deadlines. Stay on top of everything that matters.',
   },
   {
-    icon: '💬',
-    title: 'WhatsApp Reminders',
-    desc: 'Get automated notifications directly on WhatsApp before your deadlines. Never miss an important task.',
+    icon: '📧',
+    title: 'Email Reminders',
+    desc: 'Get automated email notifications before your deadlines. Never miss an important task.',
   },
   {
     icon: '⏰',
@@ -52,7 +52,7 @@ export default function HomePage() {
         <div style={{ maxWidth: '700px' }}>
           <div className="hero-badge">
             <span>🚀</span>
-            <span>WhatsApp-powered task reminders</span>
+            <span>Email-powered task reminders</span>
           </div>
           <h1 className="hero-title">
             Never miss a{' '}
@@ -60,7 +60,7 @@ export default function HomePage() {
             again.
           </h1>
           <p className="hero-description">
-            Tasker is the smart way to manage your tasks. Set deadlines, assign priorities, and let WhatsApp remind you automatically — right when it matters.
+            Tasker is the smart way to manage your tasks. Set deadlines, assign priorities, and let email reminders arrive automatically when it matters most.
           </p>
           <div className="hero-cta">
             <Link href="/signup" className="btn btn-primary btn-lg pulse-glow" id="hero-cta-signup">

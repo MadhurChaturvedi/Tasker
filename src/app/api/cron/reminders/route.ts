@@ -1,28 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/utils/supabase/admin'
-import twilio from 'twilio'
+import nodemailer from 'nodemailer'
 
 // This route is called by a cron job (e.g., Vercel Cron or external scheduler)
 // It should be protected by a secret to prevent unauthorized calls.
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET?.trim()
-  const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim()
-  const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim()
-  const twilioWhatsAppFrom = process.env.TWILIO_WHATSAPP_FROM?.trim()
+  const smtpHost = process.env.SMTP_HOST?.trim()
+  const smtpPort = Number(process.env.SMTP_PORT ?? '587')
+  const smtpUser = process.env.SMTP_USER?.trim()
+  const smtpPass = process.env.SMTP_PASS?.trim()
+  const smtpFrom = process.env.SMTP_FROM?.trim()
 
   const missingEnvVars: string[] = []
   if (!cronSecret || cronSecret === 'your-random-cron-secret-key') missingEnvVars.push('CRON_SECRET')
-  if (!twilioAccountSid || twilioAccountSid === 'your-twilio-account-sid') missingEnvVars.push('TWILIO_ACCOUNT_SID')
-  if (!twilioAuthToken || twilioAuthToken === 'your-twilio-auth-token') missingEnvVars.push('TWILIO_AUTH_TOKEN')
-  if (!twilioWhatsAppFrom || twilioWhatsAppFrom === 'whatsapp:+14155238886') missingEnvVars.push('TWILIO_WHATSAPP_FROM')
+  if (!smtpHost) missingEnvVars.push('SMTP_HOST')
+  if (!smtpUser) missingEnvVars.push('SMTP_USER')
+  if (!smtpPass) missingEnvVars.push('SMTP_PASS')
+  if (!smtpFrom) missingEnvVars.push('SMTP_FROM')
 
   if (missingEnvVars.length > 0) {
     return NextResponse.json({
-      error: 'WhatsApp reminder is not configured. Set valid values for: ' + missingEnvVars.join(', ') + '. Update .env.local and restart the app.',
+      error: 'Email reminder is not configured. Set valid values for: ' + missingEnvVars.join(', ') + '. Update .env.local and restart the app.',
     }, { status: 500 })
   }
 
-  // Authenticate the cron request
   const authHeader = request.headers.get('authorization')
   const expectedSecret = `Bearer ${cronSecret}`
 
@@ -31,15 +33,18 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  })
 
   const now = new Date()
 
-  // Find tasks where:
-  // 1. Not completed
-  // 2. Not already notified
-  // 3. Deadline is in the future
-  // 4. Current time is >= (deadline - reminder_minutes_before)
   const { data: tasks, error: tasksError } = await supabase
     .from('tasks')
     .select(`
@@ -62,7 +67,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'No tasks to notify', notified: 0 })
   }
 
-  // Filter tasks that are within their reminder window
   const tasksToNotify = tasks.filter((task) => {
     const deadlineMs = new Date(task.deadline).getTime()
     const reminderMs = task.reminder_minutes_before * 60 * 1000
@@ -74,30 +78,38 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'No tasks due for notification yet', notified: 0 })
   }
 
-  // Get user IDs to fetch WhatsApp numbers
   const userIds = [...new Set(tasksToNotify.map((t) => t.user_id))]
-  const { data: profiles, error: profilesError } = await supabase
-    .from('profiles')
-    .select('id, whatsapp_number, full_name')
-    .in('id', userIds)
-    .not('whatsapp_number', 'is', null)
+  const userEmailMap = new Map<string, string>()
 
-  if (profilesError) {
-    console.error('Error fetching profiles:', profilesError)
+  for (const userId of userIds) {
+    const { data, error } = await supabase.auth.admin.getUserById(userId)
+
+    if (!error && data.user?.email) {
+      userEmailMap.set(userId, data.user.email)
+    }
+  }
+
+  const profiles = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', userIds)
+
+  if (profiles.error) {
+    console.error('Error fetching profiles:', profiles.error)
     return NextResponse.json({ error: 'Failed to fetch profiles' }, { status: 500 })
   }
 
-  const profileMap = new Map(profiles?.map((p) => [p.id, p]) ?? [])
+  const profileMap = new Map(profiles.data?.map((p) => [p.id, p]) ?? [])
 
   const results: { taskId: string; status: string; error?: string }[] = []
 
   for (const task of tasksToNotify) {
     const profile = profileMap.get(task.user_id)
+    const recipientEmail = userEmailMap.get(task.user_id)
 
-    if (!profile?.whatsapp_number) {
-      // No WhatsApp number configured — still mark as sent to avoid future retries
+    if (!recipientEmail) {
       await supabase.from('tasks').update({ notification_sent: true }).eq('id', task.id)
-      results.push({ taskId: task.id, status: 'skipped_no_number' })
+      results.push({ taskId: task.id, status: 'skipped_no_email' })
       continue
     }
 
@@ -106,27 +118,27 @@ export async function GET(request: NextRequest) {
     const minutesLeft = Math.round((deadlineDate.getTime() - now.getTime()) / (1000 * 60))
     const timeText = hoursLeft >= 1 ? `${hoursLeft} hour(s)` : `${minutesLeft} minute(s)`
 
-    const messageBody = [
-      `⚡ *Tasker Reminder*`,
-      ``,
-      `Hi ${profile.full_name ?? 'there'}! 👋`,
-      ``,
-      `Your task is due soon:`,
-      `📋 *${task.title}*`,
-      `⏰ Due: ${deadlineDate.toLocaleString()}`,
-      `🕐 Time left: ~${timeText}`,
-      ``,
-      `Don't forget to complete it on time! 💪`,
-    ].join('\n')
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+        <h2 style="margin-bottom: 12px; color: #4f46e5;">⚡ Tasker Reminder</h2>
+        <p>Hello ${profile?.full_name ?? 'there'}!</p>
+        <p>Your task is due soon:</p>
+        <p><strong>📋 ${task.title}</strong></p>
+        <p><strong>⏰ Due:</strong> ${deadlineDate.toLocaleString()}</p>
+        <p><strong>🕐 Time left:</strong> ~${timeText}</p>
+        <p>Don't forget to complete it on time.</p>
+      </div>
+    `
 
     try {
-      await twilioClient.messages.create({
-        from: process.env.TWILIO_WHATSAPP_FROM!,
-        to: `whatsapp:${profile.whatsapp_number}`,
-        body: messageBody,
+      await transporter.sendMail({
+        from: smtpFrom,
+        to: recipientEmail,
+        subject: `Task reminder: ${task.title}`,
+        html,
+        text: `Tasker Reminder\n\nHello ${profile?.full_name ?? 'there'}!\nYour task "${task.title}" is due soon.\nDue: ${deadlineDate.toLocaleString()}\nTime left: ~${timeText}\nDon't forget to complete it on time.`,
       })
 
-      // Mark task as notified
       await supabase
         .from('tasks')
         .update({ notification_sent: true })
@@ -134,7 +146,7 @@ export async function GET(request: NextRequest) {
 
       results.push({ taskId: task.id, status: 'sent' })
     } catch (err: unknown) {
-      console.error(`Failed to send WhatsApp for task ${task.id}:`, err)
+      console.error(`Failed to send email for task ${task.id}:`, err)
       const errMsg = err instanceof Error ? err.message : 'Unknown error'
       results.push({ taskId: task.id, status: 'failed', error: errMsg })
     }
